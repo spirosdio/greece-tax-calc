@@ -2,7 +2,7 @@
 
 Greece investment tax calculator — comparing VUAA direct investing vs unit-linked insurance vs employer pension matching.
 
-**Live demo:** `https://spirosdio.github.io/greece-tax-calc/`
+**Live demo:** https://spirosdio.github.io/greece-tax-calc/
 
 ## Tax law used
 
@@ -59,23 +59,25 @@ Then open `http://localhost:8080`.
 
 ## Deploy to GitHub Pages
 
-### Option A — root of `main` branch (simplest)
+### Option A — root of `master` branch (simplest)
 
 1. Push this repo to GitHub
 2. Go to **Settings → Pages**
-3. Source: **Deploy from a branch** → branch `main`, folder `/` (root)
+3. Source: **Deploy from a branch** → branch `master`, folder `/` (root)
 4. Save — GitHub will give you a URL in ~60 seconds
 
 ### Option B — GitHub Actions (auto-deploy on push)
 
-Create `.github/workflows/deploy.yml`:
+The `.github/workflows/deploy.yml` in this repo handles this automatically on push to `master`.
+
+To set it up manually:
 
 ```yaml
 name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [master]
 
 jobs:
   deploy:
