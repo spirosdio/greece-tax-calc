@@ -3,6 +3,7 @@
  */
 
 export const PALETTE = {
+  savings:      '#64748B',
   vuaa:         '#3B82F6',
   ulLump:       '#F59E0B',
   ulPeriodic:   '#10B981',

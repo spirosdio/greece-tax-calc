@@ -4,15 +4,15 @@
  */
 
 export const SS_CAP_ANNUAL = 7761.94 * 12; // €93,143.28
-export const EE_SS_RATE    = 0.1337;
+export const EE_SS_RATE    = 0.1387;
 export const ER_SS_RATE    = 0.2179;
 
 /** Progressive income tax brackets (employment/pension, 2026, no children) */
 const BRACKETS = [
   [10_000, 0.09],
-  [10_000, 0.22],
-  [10_000, 0.28],
-  [10_000, 0.36],
+  [10_000, 0.20],
+  [10_000, 0.26],
+  [10_000, 0.34],
   [20_000, 0.39],
   [Infinity, 0.44],
 ];
@@ -56,7 +56,7 @@ export function netSalary(gross) {
 export function marginalRate(gross) {
   const taxable = gross - employeeSS(gross);
   const thresholds = [10_000, 20_000, 30_000, 40_000, 60_000];
-  const rates      = [0.09,   0.22,   0.28,   0.36,   0.39,   0.44];
+  const rates      = [0.09,   0.20,   0.26,   0.34,   0.39,   0.44];
   for (let i = 0; i < thresholds.length; i++) {
     if (taxable <= thresholds[i]) return rates[i];
   }
@@ -83,6 +83,7 @@ export function ulExitTaxRate(years, lump = true, early = false) {
  * Simulate terminal wealth for each strategy at each year up to `totalYears`.
  *
  * Strategies modelled:
+ *  - savings:     deposit post-tax contrib in bank account; interest taxed at 15% (Greek withholding)
  *  - vuaa:        invest post-tax contrib in VUAA, 0% exit tax always
  *  - ulLump:      invest full gross pre-tax in UL, exit lump-sum at exitYear, reinvest in VUAA
  *  - ulPeriodic:  same but periodic (pension) exit rate — lower tax
@@ -96,15 +97,19 @@ export function ulExitTaxRate(years, lump = true, early = false) {
  * @param {number} p.feeDrag       - decimal UL fee drag e.g. 0.015
  * @param {number} p.exitYear      - year at which UL is exited and reinvested
  * @param {number} p.matchRate     - employer match as fraction of gross e.g. 0.05
+ * @param {number} p.savingsRate   - bank deposit interest rate e.g. 0.02
  * @param {number} p.totalYears    - simulation horizon
  * @returns {Array<SimYear>}
  */
-export function simulateAll({ gross, contrib, annualReturn, feeDrag, exitYear, matchRate = 0, totalYears = 30 }) {
-  const mr       = marginalRate(gross);
-  const postTax  = contrib * (1 - mr);       // what gets invested in VUAA after tax
-  const ulReturn = annualReturn - feeDrag;
-  const matchAmt = gross * matchRate;
+export function simulateAll({ gross, contrib, annualReturn, feeDrag, exitYear, matchRate = 0, savingsRate = 0, totalYears = 30 }) {
+  const mr          = marginalRate(gross);
+  const postTax     = contrib * (1 - mr);       // what gets invested in VUAA after tax
+  const ulReturn    = annualReturn - feeDrag;
+  const matchAmt    = gross * matchRate;
+  // Greek withholding tax on deposit interest is 15% (final)
+  const netSavingsR = savingsRate * (1 - 0.15);
 
+  let savingsV = 0;
   let vuaaV = 0;
   let ulV   = 0;
   let matchV = 0;
@@ -118,6 +123,7 @@ export function simulateAll({ gross, contrib, annualReturn, feeDrag, exitYear, m
 
   for (let y = 1; y <= totalYears; y++) {
     // --- accumulation ---
+    savingsV = (savingsV + postTax) * (1 + netSavingsR);
     vuaaV = (vuaaV + postTax) * (1 + annualReturn);
 
     if (!exited) {
@@ -148,13 +154,14 @@ export function simulateAll({ gross, contrib, annualReturn, feeDrag, exitYear, m
     results.push({
       year: y,
       exited,
-      vuaa:         Math.round(vuaaV),
-      ulLump:       Math.round(ulLump),
-      ulPeriodic:   Math.round(ulPer),
-      matchLump:    Math.round(mLump),
+      savings:       Math.round(savingsV),
+      vuaa:          Math.round(vuaaV),
+      ulLump:        Math.round(ulLump),
+      ulPeriodic:    Math.round(ulPer),
+      matchLump:     Math.round(mLump),
       matchPeriodic: Math.round(mPer),
-      ulGross:      Math.round(ulV),
-      matchGross:   Math.round(matchV),
+      ulGross:       Math.round(ulV),
+      matchGross:    Math.round(matchV),
     });
   }
 

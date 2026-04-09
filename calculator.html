@@ -25,9 +25,9 @@
 <div class="container">
 
   <section class="hero" style="padding:3rem 0 2rem">
-    <div class="hero-label">VUAA vs Unit-Linked Insurance</div>
+    <div class="hero-label">Cash Savings vs VUAA vs Unit-Linked Insurance</div>
     <h1 style="font-size:clamp(1.6rem,4vw,2.6rem)">Full strategy comparison<br>with optimal exit timing</h1>
-    <p style="font-size:14px;margin-top:.5rem">After UL exit, proceeds are reinvested into VUAA — the comparison is fair end-to-end.</p>
+    <p style="font-size:14px;margin-top:.5rem">① Cash savings · ② VUAA monthly · ③ UL (lump or periodic) → VUAA. After UL exit, proceeds reinvest into VUAA for a fair end-to-end comparison.</p>
   </section>
 
   <section class="section" style="padding-top:0">
@@ -75,6 +75,13 @@
           <div class="ctrl-row">
             <input type="range" id="match" min="0" max="20" step="0.5" value="5" />
             <span class="ctrl-val" id="matchOut">5%</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Bank savings rate (Option 1)</label>
+          <div class="ctrl-row">
+            <input type="range" id="savings" min="0" max="6" step="0.1" value="2" />
+            <span class="ctrl-val" id="savingsOut">2.0%</span>
           </div>
         </div>
       </div>
@@ -146,13 +153,14 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 function getParams() {
   return {
-    gross:  +document.getElementById('gross').value,
-    contrib:+document.getElementById('contrib').value,
+    gross:       +document.getElementById('gross').value,
+    contrib:     +document.getElementById('contrib').value,
     annualReturn: +document.getElementById('ret').value / 100,
-    feeDrag:+document.getElementById('drag').value / 100,
-    exitYear:+document.getElementById('exit').value,
-    matchRate:+document.getElementById('match').value / 100,
-    totalYears: 30,
+    feeDrag:     +document.getElementById('drag').value / 100,
+    exitYear:    +document.getElementById('exit').value,
+    matchRate:   +document.getElementById('match').value / 100,
+    savingsRate: +document.getElementById('savings').value / 100,
+    totalYears:  30,
   };
 }
 
@@ -162,7 +170,8 @@ function updateDisplays(p) {
   document.getElementById('retOut').textContent    = (p.annualReturn*100) + '%';
   document.getElementById('dragOut').textContent   = (p.feeDrag*100).toFixed(1) + '%';
   document.getElementById('exitOut').textContent   = 'Yr ' + p.exitYear;
-  document.getElementById('matchOut').textContent  = (p.matchRate*100).toFixed(1) + '%';
+  document.getElementById('matchOut').textContent   = (p.matchRate*100).toFixed(1) + '%';
+  document.getElementById('savingsOut').textContent = (p.savingsRate*100).toFixed(1) + '%';
 }
 
 function render() {
@@ -175,30 +184,35 @@ function render() {
   const last = data[p.totalYears - 1];
 
   const strategies = [
-    { key: 'vuaa',          label: 'VUAA only',               color: PALETTE.vuaa },
-    { key: 'ulLump',        label: 'UL lump → VUAA',          color: PALETTE.ulLump },
-    { key: 'ulPeriodic',    label: 'UL periodic → VUAA',      color: PALETTE.ulPeriodic },
-    { key: 'matchLump',     label: 'Match lump → VUAA',       color: PALETTE.matchLump },
-    { key: 'matchPeriodic', label: 'Match periodic → VUAA',   color: PALETTE.matchPeriodic },
+    { key: 'savings',       label: '① Cash savings',          color: PALETTE.savings },
+    { key: 'vuaa',          label: '② VUAA monthly',           color: PALETTE.vuaa },
+    { key: 'ulLump',        label: '③a UL lump → VUAA',        color: PALETTE.ulLump },
+    { key: 'ulPeriodic',    label: '③b UL periodic → VUAA',    color: PALETTE.ulPeriodic },
+    { key: 'matchLump',     label: 'Match lump → VUAA',        color: PALETTE.matchLump },
+    { key: 'matchPeriodic', label: 'Match periodic → VUAA',    color: PALETTE.matchPeriodic },
   ];
 
   const best = strategies.reduce((a, b) => last[a.key] >= last[b.key] ? a : b);
 
+  const netSavingsR = p.savingsRate * (1 - 0.15);
   // Metric cards
   document.getElementById('metrics').innerHTML = [
     { lbl: 'Marginal rate', val: (mr*100).toFixed(0)+'%', sub: `On €${(p.gross/1000).toFixed(0)}k gross`, cls: '' },
-    { lbl: 'VUAA invest/yr', val: fmtFull(postTax), sub: 'After income tax + SS', cls: '' },
+    { lbl: 'Post-tax invest/yr', val: fmtFull(postTax), sub: 'VUAA & savings (after tax + SS)', cls: '' },
     { lbl: '30yr winner', val: best.label, sub: fmtFull(last[best.key]), cls: 'positive' },
-    { lbl: 'UL effective return', val: ((p.annualReturn - p.feeDrag)*100).toFixed(1)+'%', sub: `${(p.annualReturn*100)}% − ${(p.feeDrag*100).toFixed(1)}% drag`, cls: '' },
+    { lbl: 'Savings net return', val: (netSavingsR*100).toFixed(2)+'%', sub: `${(p.savingsRate*100).toFixed(1)}% − 15% interest tax`, cls: '' },
   ].map(m => `<div class="metric-card ${m.cls}"><div class="lbl">${m.lbl}</div><div class="val">${m.val}</div><div class="sub">${m.sub}</div></div>`).join('');
 
   // Callout
-  const ulAdv = last.ulPeriodic - last.vuaa;
-  const mAdv  = last.matchPeriodic - last.vuaa;
+  const savAdv  = last.savings - last.vuaa;
+  const ulAdv   = last.ulPeriodic - last.vuaa;
+  const mAdv    = last.matchPeriodic - last.vuaa;
   document.getElementById('callout').innerHTML =
-    `<strong>At year 30:</strong> UL periodic→VUAA is <strong class="${ulAdv>=0?'text-green':'text-red'}">${ulAdv>=0?'+':''}${fmtFull(ulAdv)}</strong> vs VUAA only. 
-    Match periodic→VUAA is <strong class="${mAdv>=0?'text-green':'text-red'}">${mAdv>=0?'+':''}${fmtFull(mAdv)}</strong> vs VUAA only. 
-    UL exit at year ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic tax, ${(ulExitTaxRate(p.exitYear,true,false)*100).toFixed(1)}% lump tax).`;
+    `<strong>At year 30 vs VUAA:</strong> ` +
+    `Cash savings <strong class="${savAdv>=0?'text-green':'text-red'}">${savAdv>=0?'+':''}${fmtFull(savAdv)}</strong>. ` +
+    `UL periodic→VUAA <strong class="${ulAdv>=0?'text-green':'text-red'}">${ulAdv>=0?'+':''}${fmtFull(ulAdv)}</strong>. ` +
+    `Match periodic→VUAA <strong class="${mAdv>=0?'text-green':'text-red'}">${mAdv>=0?'+':''}${fmtFull(mAdv)}</strong>. ` +
+    `UL exit yr ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic, ${(ulExitTaxRate(p.exitYear,true,false)*100).toFixed(1)}% lump tax).`;
 
   const labels30 = data.map(d => 'Yr ' + d.year);
 
@@ -223,12 +237,13 @@ function render() {
   }
 
   if (activeTab === 'line') {
-    renderLegend('leg-line', strategies.map((s, i) => [s.color, [DASH.solid,DASH.dash,DASH.dot,DASH.longDash,DASH.dashDot][i], s.label]));
+    const dashes = [DASH.dot, DASH.solid, DASH.dash, DASH.longDash, DASH.dashDot, [4,2,8,2]];
+    renderLegend('leg-line', strategies.map((s, i) => [s.color, dashes[i], s.label]));
     makeChart('chart-line', {
       type: 'line',
       data: {
         labels: labels30,
-        datasets: strategies.map((s, i) => lineDS(s.label, data.map(d => d[s.key]), s.color, [DASH.solid,DASH.dash,DASH.dot,DASH.longDash,DASH.dashDot][i])),
+        datasets: strategies.map((s, i) => lineDS(s.label, data.map(d => d[s.key]), s.color, dashes[i])),
       },
       options: baseChartOptions(),
     });
@@ -273,14 +288,15 @@ function render() {
 
   if (activeTab === 'table') {
     let html = `<thead><tr>
-      <th>Year</th><th>VUAA</th><th>UL periodic→VUAA</th><th>Match periodic→VUAA</th>
+      <th>Year</th><th>① Savings</th><th>② VUAA</th><th>③b UL periodic→VUAA</th><th>Match periodic→VUAA</th>
       <th>UL vs VUAA</th><th>Match vs VUAA</th><th></th>
     </tr></thead><tbody>`;
     data.forEach(d => {
-      const ulD = d.ulPeriodic - d.vuaa;
-      const mD  = d.matchPeriodic - d.vuaa;
+      const ulD  = d.ulPeriodic - d.vuaa;
+      const mD   = d.matchPeriodic - d.vuaa;
       html += `<tr class="${d.exited && d.year === p.exitYear ? 'exit-row' : ''}">
         <td class="hi">${d.year}</td>
+        <td>${fmtFull(d.savings)}</td>
         <td>${fmtFull(d.vuaa)}</td>
         <td>${fmtFull(d.ulPeriodic)}</td>
         <td>${fmtFull(d.matchPeriodic)}</td>
@@ -295,8 +311,9 @@ function render() {
 
   document.getElementById('main-note').textContent =
     `Marginal rate ${(mr*100).toFixed(0)}% on €${(p.gross/1000).toFixed(0)}k. ` +
-    `VUAA: invest ${fmtFull(postTax)}/yr post-tax, 0% tax always. ` +
-    `UL: invest ${fmtFull(p.contrib)}/yr pre-tax at ${((p.annualReturn-p.feeDrag)*100).toFixed(1)}% return, exit at yr ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic), reinvest net into VUAA. ` +
+    `① Savings: ${fmtFull(postTax)}/yr post-tax at ${(p.savingsRate*100).toFixed(1)}% gross (${(netSavingsR*100).toFixed(2)}% net after 15% interest tax). ` +
+    `② VUAA: same ${fmtFull(postTax)}/yr post-tax, 0% exit tax. ` +
+    `③ UL: invest ${fmtFull(p.contrib)}/yr pre-tax at ${((p.annualReturn-p.feeDrag)*100).toFixed(1)}% return, exit yr ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic / ${(ulExitTaxRate(p.exitYear,true,false)*100).toFixed(1)}% lump), reinvest net into VUAA. ` +
     `Match: +${fmtFull(p.gross*p.matchRate)}/yr employer SS-exempt pension, same exit logic.`;
 }
 

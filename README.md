@@ -10,7 +10,7 @@ Greece investment tax calculator — comparing VUAA direct investing vs unit-lin
 |-----|---------------|
 | Law 5246/2025 | Income tax brackets (2026) |
 | N.5078/2023 | Group pension / UL exit tax rates (from 2024) |
-| EFKA 2025 | Social security: 13.37% employee, 21.79% employer |
+| EFKA 2025 | Social security: 13.87% employee, 21.79% employer |
 | ν.4099/2012 + UCITS Directive 2009/65/EC | 0% capital gains on UCITS ETFs in Greece |
 
 ## Pages
