@@ -2,7 +2,7 @@
 
 Greece investment tax calculator — comparing VUAA direct investing vs unit-linked insurance vs employer pension matching.
 
-**Live demo:** `https://<your-username>.github.io/greece-tax-calc/`
+**Live demo:** `https://spirosdio.github.io/greece-tax-calc/`
 
 ## Tax law used
 
