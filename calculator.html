@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VUAA vs Unit-Linked Calculator · GR.tax</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" />
+  <link rel="stylesheet" href="src/css/main.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="nav-logo"><a href="index.html" style="color:inherit;text-decoration:none">GR<span>.</span>tax</a></span>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="calculator.html" class="active">Calculator</a>
+      <a href="matching.html">Employer matching</a>
+      <a href="sensitivity.html">Return sensitivity</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <section class="hero" style="padding:3rem 0 2rem">
+    <div class="hero-label">VUAA vs Unit-Linked Insurance</div>
+    <h1 style="font-size:clamp(1.6rem,4vw,2.6rem)">Full strategy comparison<br>with optimal exit timing</h1>
+    <p style="font-size:14px;margin-top:.5rem">After UL exit, proceeds are reinvested into VUAA — the comparison is fair end-to-end.</p>
+  </section>
+
+  <section class="section" style="padding-top:0">
+
+    <!-- Controls -->
+    <div class="card mb-3">
+      <div class="controls">
+        <div class="ctrl-group">
+          <label>Gross annual salary</label>
+          <div class="ctrl-row">
+            <input type="range" id="gross" min="30000" max="200000" step="1000" value="100000" />
+            <span class="ctrl-val" id="grossOut">€100k</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Annual contribution budget</label>
+          <div class="ctrl-row">
+            <input type="range" id="contrib" min="2000" max="40000" step="500" value="20000" />
+            <span class="ctrl-val" id="contribOut">€20k</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>S&amp;P 500 annual return</label>
+          <div class="ctrl-row">
+            <input type="range" id="ret" min="4" max="18" step="0.5" value="10" />
+            <span class="ctrl-val" id="retOut">10%</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>UL fee drag (vs VUAA 0.07%)</label>
+          <div class="ctrl-row">
+            <input type="range" id="drag" min="0.5" max="3" step="0.1" value="1.5" />
+            <span class="ctrl-val" id="dragOut">1.5%</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>UL exit year (reinvest → VUAA)</label>
+          <div class="ctrl-row">
+            <input type="range" id="exit" min="1" max="29" step="1" value="15" />
+            <span class="ctrl-val" id="exitOut">Yr 15</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Employer match % of gross</label>
+          <div class="ctrl-row">
+            <input type="range" id="match" min="0" max="20" step="0.5" value="5" />
+            <span class="ctrl-val" id="matchOut">5%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Metric cards -->
+    <div class="grid-4 mb-3" id="metrics"></div>
+
+    <!-- Callout -->
+    <div class="callout" id="callout"></div>
+
+    <!-- Tabs -->
+    <div class="tabs mt-2">
+      <button class="tab-btn active" data-tab="bar">Terminal wealth</button>
+      <button class="tab-btn" data-tab="line">Year-by-year</button>
+      <button class="tab-btn" data-tab="optexit">Optimal exit</button>
+      <button class="tab-btn" data-tab="table">Detail table</button>
+    </div>
+
+    <!-- Tab panels -->
+    <div id="tab-bar">
+      <div class="legend" id="leg-bar"></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-bar" role="img" aria-label="Terminal wealth bar chart"></canvas></div>
+    </div>
+
+    <div id="tab-line" style="display:none">
+      <div class="legend" id="leg-line"></div>
+      <div class="chart-wrap" style="height:320px"><canvas id="chart-line" role="img" aria-label="Year by year portfolio value"></canvas></div>
+    </div>
+
+    <div id="tab-optexit" style="display:none">
+      <div class="chart-wrap" style="height:280px"><canvas id="chart-optexit" role="img" aria-label="Terminal wealth vs UL exit year"></canvas></div>
+      <p class="note" id="note-optexit"></p>
+    </div>
+
+    <div id="tab-table" style="display:none">
+      <div class="table-scroll"><table class="data-table" id="detail-table"></table></div>
+    </div>
+
+    <p class="note" id="main-note"></p>
+  </section>
+</div>
+
+<footer class="footer container">
+  <span>Greece investment tax calculator · 2026 tax rates</span>
+  <span>Not financial advice</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module">
+import { simulateAll, optimalExitYear, marginalRate, employeeSS, incomeTax, ulExitTaxRate } from './src/js/tax.js';
+import { fmt, fmtFull, PALETTE, DASH, baseChartOptions, lineDS, barDS, renderLegend, makeChart } from './src/js/charts.js';
+
+let activeTab = 'bar';
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const t = btn.dataset.tab;
+    activeTab = t;
+    ['bar','line','optexit','table'].forEach(id =>
+      document.getElementById('tab-' + id).style.display = id === t ? 'block' : 'none'
+    );
+    render();
+  });
+});
+
+function getParams() {
+  return {
+    gross:  +document.getElementById('gross').value,
+    contrib:+document.getElementById('contrib').value,
+    annualReturn: +document.getElementById('ret').value / 100,
+    feeDrag:+document.getElementById('drag').value / 100,
+    exitYear:+document.getElementById('exit').value,
+    matchRate:+document.getElementById('match').value / 100,
+    totalYears: 30,
+  };
+}
+
+function updateDisplays(p) {
+  document.getElementById('grossOut').textContent  = '€' + (p.gross/1000).toFixed(0) + 'k';
+  document.getElementById('contribOut').textContent= '€' + (p.contrib/1000).toFixed(0) + 'k';
+  document.getElementById('retOut').textContent    = (p.annualReturn*100) + '%';
+  document.getElementById('dragOut').textContent   = (p.feeDrag*100).toFixed(1) + '%';
+  document.getElementById('exitOut').textContent   = 'Yr ' + p.exitYear;
+  document.getElementById('matchOut').textContent  = (p.matchRate*100).toFixed(1) + '%';
+}
+
+function render() {
+  const p = getParams();
+  updateDisplays(p);
+
+  const mr = marginalRate(p.gross);
+  const postTax = p.contrib * (1 - mr);
+  const data = simulateAll(p);
+  const last = data[p.totalYears - 1];
+
+  const strategies = [
+    { key: 'vuaa',          label: 'VUAA only',               color: PALETTE.vuaa },
+    { key: 'ulLump',        label: 'UL lump → VUAA',          color: PALETTE.ulLump },
+    { key: 'ulPeriodic',    label: 'UL periodic → VUAA',      color: PALETTE.ulPeriodic },
+    { key: 'matchLump',     label: 'Match lump → VUAA',       color: PALETTE.matchLump },
+    { key: 'matchPeriodic', label: 'Match periodic → VUAA',   color: PALETTE.matchPeriodic },
+  ];
+
+  const best = strategies.reduce((a, b) => last[a.key] >= last[b.key] ? a : b);
+
+  // Metric cards
+  document.getElementById('metrics').innerHTML = [
+    { lbl: 'Marginal rate', val: (mr*100).toFixed(0)+'%', sub: `On €${(p.gross/1000).toFixed(0)}k gross`, cls: '' },
+    { lbl: 'VUAA invest/yr', val: fmtFull(postTax), sub: 'After income tax + SS', cls: '' },
+    { lbl: '30yr winner', val: best.label, sub: fmtFull(last[best.key]), cls: 'positive' },
+    { lbl: 'UL effective return', val: ((p.annualReturn - p.feeDrag)*100).toFixed(1)+'%', sub: `${(p.annualReturn*100)}% − ${(p.feeDrag*100).toFixed(1)}% drag`, cls: '' },
+  ].map(m => `<div class="metric-card ${m.cls}"><div class="lbl">${m.lbl}</div><div class="val">${m.val}</div><div class="sub">${m.sub}</div></div>`).join('');
+
+  // Callout
+  const ulAdv = last.ulPeriodic - last.vuaa;
+  const mAdv  = last.matchPeriodic - last.vuaa;
+  document.getElementById('callout').innerHTML =
+    `<strong>At year 30:</strong> UL periodic→VUAA is <strong class="${ulAdv>=0?'text-green':'text-red'}">${ulAdv>=0?'+':''}${fmtFull(ulAdv)}</strong> vs VUAA only. 
+    Match periodic→VUAA is <strong class="${mAdv>=0?'text-green':'text-red'}">${mAdv>=0?'+':''}${fmtFull(mAdv)}</strong> vs VUAA only. 
+    UL exit at year ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic tax, ${(ulExitTaxRate(p.exitYear,true,false)*100).toFixed(1)}% lump tax).`;
+
+  const labels30 = data.map(d => 'Yr ' + d.year);
+
+  if (activeTab === 'bar') {
+    const colors = strategies.map(s => s.color);
+    renderLegend('leg-bar', strategies.map(s => [s.color, [], s.label]));
+    makeChart('chart-bar', {
+      type: 'bar',
+      data: {
+        labels: strategies.map(s => s.label),
+        datasets: [{ data: strategies.map(s => last[s.key]), backgroundColor: colors.map(c => c+'cc'), borderRadius: 5, borderSkipped: false }],
+      },
+      options: {
+        ...baseChartOptions(),
+        plugins: { ...baseChartOptions().plugins, tooltip: { callbacks: { label: c => '  ' + fmtFull(c.raw) } } },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false } },
+          y: { ticks: { color: '#9ca3af', font: { size: 11 }, callback: v => fmt(v) }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        },
+      },
+    });
+  }
+
+  if (activeTab === 'line') {
+    renderLegend('leg-line', strategies.map((s, i) => [s.color, [DASH.solid,DASH.dash,DASH.dot,DASH.longDash,DASH.dashDot][i], s.label]));
+    makeChart('chart-line', {
+      type: 'line',
+      data: {
+        labels: labels30,
+        datasets: strategies.map((s, i) => lineDS(s.label, data.map(d => d[s.key]), s.color, [DASH.solid,DASH.dash,DASH.dot,DASH.longDash,DASH.dashDot][i])),
+      },
+      options: baseChartOptions(),
+    });
+  }
+
+  if (activeTab === 'optexit') {
+    // Sweep exit years 1-29, compute terminal wealth at yr 30
+    const exitYears = Array.from({ length: 29 }, (_, i) => i + 1);
+    const ulPerLine = [], mPerLine = [], vuaaLine = [];
+    exitYears.forEach(ey => {
+      const rows = simulateAll({ ...p, exitYear: ey });
+      const l = rows[p.totalYears - 1];
+      ulPerLine.push(l.ulPeriodic);
+      mPerLine.push(l.matchPeriodic);
+      vuaaLine.push(l.vuaa);
+    });
+    const bestUL = exitYears[ulPerLine.indexOf(Math.max(...ulPerLine))];
+    const bestM  = exitYears[mPerLine.indexOf(Math.max(...mPerLine))];
+    makeChart('chart-optexit', {
+      type: 'line',
+      data: {
+        labels: exitYears.map(y => 'Yr ' + y),
+        datasets: [
+          lineDS('VUAA only (baseline)', vuaaLine, PALETTE.vuaa, DASH.dash),
+          lineDS('UL periodic → VUAA', ulPerLine, PALETTE.ulPeriodic, []),
+          lineDS('Match periodic → VUAA', mPerLine, PALETTE.matchPeriodic, []),
+        ],
+      },
+      options: {
+        ...baseChartOptions(),
+        plugins: {
+          ...baseChartOptions().plugins,
+          legend: { display: true, position: 'top', labels: { color: '#9ca3af', font: { size: 11 }, boxWidth: 12 } },
+        },
+      },
+    });
+    document.getElementById('note-optexit').textContent =
+      `Optimal exit for UL periodic→VUAA: year ${bestUL} (${fmtFull(ulPerLine[bestUL-1])}). ` +
+      `Optimal for match periodic→VUAA: year ${bestM} (${fmtFull(mPerLine[bestM-1])}). ` +
+      `After the peak, UL fee drag compounds faster than the remaining tax bracket benefit warrants.`;
+  }
+
+  if (activeTab === 'table') {
+    let html = `<thead><tr>
+      <th>Year</th><th>VUAA</th><th>UL periodic→VUAA</th><th>Match periodic→VUAA</th>
+      <th>UL vs VUAA</th><th>Match vs VUAA</th><th></th>
+    </tr></thead><tbody>`;
+    data.forEach(d => {
+      const ulD = d.ulPeriodic - d.vuaa;
+      const mD  = d.matchPeriodic - d.vuaa;
+      html += `<tr class="${d.exited && d.year === p.exitYear ? 'exit-row' : ''}">
+        <td class="hi">${d.year}</td>
+        <td>${fmtFull(d.vuaa)}</td>
+        <td>${fmtFull(d.ulPeriodic)}</td>
+        <td>${fmtFull(d.matchPeriodic)}</td>
+        <td class="${ulD>=0?'pos':'neg'}">${ulD>=0?'+':''}${fmtFull(ulD)}</td>
+        <td class="${mD>=0?'pos':'neg'}">${mD>=0?'+':''}${fmtFull(mD)}</td>
+        <td style="font-size:10px;color:var(--text3)">${d.year===p.exitYear?'← UL exit':''}</td>
+      </tr>`;
+    });
+    html += '</tbody>';
+    document.getElementById('detail-table').innerHTML = html;
+  }
+
+  document.getElementById('main-note').textContent =
+    `Marginal rate ${(mr*100).toFixed(0)}% on €${(p.gross/1000).toFixed(0)}k. ` +
+    `VUAA: invest ${fmtFull(postTax)}/yr post-tax, 0% tax always. ` +
+    `UL: invest ${fmtFull(p.contrib)}/yr pre-tax at ${((p.annualReturn-p.feeDrag)*100).toFixed(1)}% return, exit at yr ${p.exitYear} (${(ulExitTaxRate(p.exitYear,false,false)*100).toFixed(1)}% periodic), reinvest net into VUAA. ` +
+    `Match: +${fmtFull(p.gross*p.matchRate)}/yr employer SS-exempt pension, same exit logic.`;
+}
+
+document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

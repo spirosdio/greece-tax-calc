@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Return Sensitivity · GR.tax</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" />
+  <link rel="stylesheet" href="src/css/main.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="nav-logo"><a href="index.html" style="color:inherit;text-decoration:none">GR<span>.</span>tax</a></span>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="calculator.html">Calculator</a>
+      <a href="matching.html">Employer matching</a>
+      <a href="sensitivity.html" class="active">Return sensitivity</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <section class="hero" style="padding:3rem 0 2rem">
+    <div class="hero-label" style="color:var(--purple)">Return sensitivity analysis</div>
+    <h1 style="font-size:clamp(1.6rem,4vw,2.6rem)">How does the S&P 500 return<br>change the math?</h1>
+    <p style="font-size:14px;margin-top:.5rem">Higher returns help both strategies, but fee drag scales with portfolio size — find your crossover point.</p>
+  </section>
+
+  <section class="section" style="padding-top:0">
+
+    <div class="card mb-3">
+      <div class="controls">
+        <div class="ctrl-group">
+          <label>Gross salary</label>
+          <div class="ctrl-row">
+            <input type="range" id="gross" min="30000" max="200000" step="1000" value="100000" />
+            <span class="ctrl-val" id="grossOut">€100k</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Annual contribution</label>
+          <div class="ctrl-row">
+            <input type="range" id="contrib" min="2000" max="40000" step="500" value="20000" />
+            <span class="ctrl-val" id="contribOut">€20k</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>UL fee drag</label>
+          <div class="ctrl-row">
+            <input type="range" id="drag" min="0.3" max="3" step="0.1" value="1.5" />
+            <span class="ctrl-val" id="dragOut">1.5%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-4 mb-3" id="metrics"></div>
+
+    <div class="tabs mt-2">
+      <button class="tab-btn active" data-tab="sweep">Return sweep</button>
+      <button class="tab-btn" data-tab="optexit">Optimal exit vs return</button>
+      <button class="tab-btn" data-tab="surface">Drag × return surface</button>
+      <button class="tab-btn" data-tab="decomp">Advantage decomposition</button>
+    </div>
+
+    <div id="tab-sweep">
+      <div class="legend" id="leg-sweep"></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-sweep" role="img" aria-label="Terminal wealth across return assumptions"></canvas></div>
+      <div class="callout mt-2" id="callout-sweep"></div>
+    </div>
+
+    <div id="tab-optexit" style="display:none">
+      <div class="chart-wrap" style="height:280px"><canvas id="chart-optexit" role="img" aria-label="Optimal exit year vs annual return"></canvas></div>
+      <p class="note" id="note-optexit"></p>
+    </div>
+
+    <div id="tab-surface" style="display:none">
+      <div class="legend" id="leg-surface"></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-surface" role="img" aria-label="UL advantage vs VUAA across drag and return combinations"></canvas></div>
+      <div class="callout mt-2" id="callout-surface"></div>
+    </div>
+
+    <div id="tab-decomp" style="display:none">
+      <div class="legend" id="leg-decomp"></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-decomp" role="img" aria-label="Decomposition of UL advantage into pre-tax entry benefit and fee drag cost"></canvas></div>
+      <p class="note" id="note-decomp"></p>
+    </div>
+
+    <p class="note" id="main-note"></p>
+  </section>
+</div>
+
+<footer class="footer container">
+  <span>Greece investment tax calculator · 2026 tax rates</span>
+  <span>Not financial advice</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module">
+import { simulateAll, optimalExitYear, marginalRate } from './src/js/tax.js';
+import { fmt, fmtFull, PALETTE, DASH, baseChartOptions, lineDS, barDS, renderLegend, makeChart } from './src/js/charts.js';
+
+let activeTab = 'sweep';
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    ['sweep','optexit','surface','decomp'].forEach(id =>
+      document.getElementById('tab-' + id).style.display = id === activeTab ? 'block' : 'none'
+    );
+    render();
+  });
+});
+
+const RET_RANGE = Array.from({ length: 29 }, (_, i) => 4 + i * 0.5);
+
+function tw(gross, contrib, ret, drag, exitYear, totalYears = 30) {
+  const rows = simulateAll({ gross, contrib, annualReturn: ret, feeDrag: drag, exitYear, matchRate: 0, totalYears });
+  const l = rows[totalYears - 1];
+  return { vuaa: l.vuaa, ulPer: l.ulPeriodic, ulLump: l.ulLump };
+}
+
+function optExit(gross, contrib, ret, drag, totalYears = 30) {
+  let best = { year: 1, val: -Infinity };
+  for (let ey = 1; ey <= totalYears; ey++) {
+    const { ulPer } = tw(gross, contrib, ret, drag, ey, totalYears);
+    if (ulPer > best.val) best = { year: ey, val: ulPer };
+  }
+  return best;
+}
+
+function render() {
+  const gross  = +document.getElementById('gross').value;
+  const contrib= +document.getElementById('contrib').value;
+  const drag   = +document.getElementById('drag').value / 100;
+
+  document.getElementById('grossOut').textContent  = '€' + (gross/1000).toFixed(0) + 'k';
+  document.getElementById('contribOut').textContent= '€' + (contrib/1000).toFixed(0) + 'k';
+  document.getElementById('dragOut').textContent   = (drag*100).toFixed(1) + '%';
+
+  const mr = marginalRate(gross);
+  const refRet = 0.10;
+  const oe = optExit(gross, contrib, refRet, drag);
+  const { vuaa: v10, ulPer: ul10 } = tw(gross, contrib, refRet, drag, oe.year);
+  const { ulPer: ul10hold } = tw(gross, contrib, refRet, drag, 30);
+
+  document.getElementById('metrics').innerHTML = [
+    { lbl: 'Marginal rate',       val: (mr*100).toFixed(0)+'%', sub: `On €${(gross/1000).toFixed(0)}k` },
+    { lbl: 'VUAA only (10%, 30yr)', val: fmt(v10),  sub: 'Post-tax, 0% exit tax' },
+    { lbl: 'UL optimal exit (10%)', val: fmt(ul10), sub: `Exit yr ${oe.year}`, cls: ul10 > v10 ? 'positive' : '' },
+    { lbl: 'UL hold 30yr (10%)',    val: fmt(ul10hold), sub: 'No reinvestment opt' },
+  ].map(m => `<div class="metric-card ${m?.cls||''}"><div class="lbl">${m.lbl}</div><div class="val">${m.val}</div><div class="sub">${m.sub}</div></div>`).join('');
+
+  if (activeTab === 'sweep') {
+    const vuaaLine = [], ulOptLine = [], ulHoldLine = [];
+    RET_RANGE.forEach(rp => {
+      const r = rp / 100;
+      const oe2 = optExit(gross, contrib, r, drag);
+      const { vuaa, ulPer } = tw(gross, contrib, r, drag, oe2.year);
+      const { ulPer: ulH } = tw(gross, contrib, r, drag, 30);
+      vuaaLine.push(vuaa);
+      ulOptLine.push(ulPer);
+      ulHoldLine.push(ulH);
+    });
+    renderLegend('leg-sweep', [
+      [PALETTE.vuaa, [], 'VUAA only'],
+      [PALETTE.ulPeriodic, DASH.dash, 'UL periodic → VUAA (optimal exit)'],
+      [PALETTE.ulLump, DASH.dot, 'UL periodic → VUAA (hold 30yr)'],
+    ]);
+    makeChart('chart-sweep', {
+      type: 'line',
+      data: {
+        labels: RET_RANGE.map(r => r + '%'),
+        datasets: [
+          lineDS('VUAA only', vuaaLine, PALETTE.vuaa, []),
+          lineDS('UL optimal exit', ulOptLine, PALETTE.ulPeriodic, DASH.dash),
+          lineDS('UL hold 30yr', ulHoldLine, PALETTE.ulLump, DASH.dot),
+        ],
+      },
+      options: { ...baseChartOptions(), scales: { ...baseChartOptions().scales, x: { ...baseChartOptions().scales.x, title: { display: true, text: 'Annual return', color: '#6b7280', font: { size: 11 } } } } },
+    });
+    const crossIdx = RET_RANGE.findIndex((_, i) => vuaaLine[i] > ulOptLine[i]);
+    const crossover = crossIdx >= 0 ? RET_RANGE[crossIdx] : null;
+    document.getElementById('callout-sweep').innerHTML = crossover
+      ? `<strong>Crossover at ~${crossover}%:</strong> above this return, VUAA beats UL (even with optimal exit). Fee drag on a large portfolio outweighs the pre-tax entry advantage. Below ${crossover}%, UL wins.`
+      : `<strong>UL with optimal exit beats VUAA across all return levels shown.</strong> At ${(drag*100).toFixed(1)}% drag and ${(mr*100).toFixed(0)}% marginal rate, the pre-tax entry advantage dominates. Try increasing drag to find a crossover.`;
+  }
+
+  if (activeTab === 'optexit') {
+    const optYears = [], ulWins = [];
+    RET_RANGE.forEach(rp => {
+      const r = rp / 100;
+      const oe2 = optExit(gross, contrib, r, drag);
+      optYears.push(oe2.year);
+      const { vuaa, ulPer } = tw(gross, contrib, r, drag, oe2.year);
+      ulWins.push(ulPer > vuaa);
+    });
+    makeChart('chart-optexit', {
+      type: 'bar',
+      data: {
+        labels: RET_RANGE.map(r => r + '%'),
+        datasets: [{
+          label: 'Optimal UL exit year',
+          data: optYears,
+          backgroundColor: optYears.map((_, i) => ulWins[i] ? PALETTE.ulPeriodic + 'cc' : PALETTE.vuaa + '88'),
+          borderRadius: 3,
+        }],
+      },
+      options: {
+        ...baseChartOptions(),
+        plugins: {
+          ...baseChartOptions().plugins,
+          tooltip: { callbacks: {
+            label: c => '  Exit at year ' + c.raw,
+            afterLabel: (c) => ulWins[c.dataIndex] ? ' → UL wins overall' : ' → VUAA wins overall',
+          } },
+        },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false }, title: { display: true, text: 'Annual return', color: '#6b7280', font: { size: 11 } } },
+          y: { min: 0, max: 30, ticks: { color: '#9ca3af', font: { size: 11 } }, title: { display: true, text: 'Optimal exit year', color: '#6b7280', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        },
+      },
+    });
+    document.getElementById('note-optexit').textContent =
+      `Teal = UL wins overall at that return. Blue = VUAA wins but this is still the best UL exit year. ` +
+      `As return rises, optimal exit shifts earlier — the fee drag on a large portfolio makes it better to exit into pure VUAA sooner.`;
+  }
+
+  if (activeTab === 'surface') {
+    const retSteps = [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18];
+    const dragSteps = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
+    const dragColors = ['#10B981','#3B82F6','#8B5CF6','#F59E0B','#EC4899','#EF4444'];
+
+    const datasets = dragSteps.map((dv, di) => {
+      const data = retSteps.map(rp => {
+        const r = rp / 100, dg = dv / 100;
+        const oe2 = optExit(gross, contrib, r, dg);
+        const { vuaa, ulPer } = tw(gross, contrib, r, dg, oe2.year);
+        return Math.round(ulPer - vuaa);
+      });
+      return lineDS(`${dv}% drag`, data, dragColors[di], []);
+    });
+
+    renderLegend('leg-surface', dragSteps.map((dv, di) => [dragColors[di], [], dv + '% drag']));
+    makeChart('chart-surface', {
+      type: 'line',
+      data: { labels: retSteps.map(r => r + '%'), datasets },
+      options: {
+        ...baseChartOptions(),
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => '  ' + c.dataset.label + ': ' + (c.raw >= 0 ? '+' : '') + fmtFull(c.raw) } },
+        },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' }, title: { display: true, text: 'Annual return', color: '#6b7280', font: { size: 11 } } },
+          y: { ticks: { color: '#9ca3af', font: { size: 11 }, callback: v => (v >= 0 ? '+' : '') + fmt(v) }, title: { display: true, text: 'UL minus VUAA (€)', color: '#6b7280', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        },
+      },
+    });
+
+    let breakevenMsg = '';
+    for (let i = 0; i < retSteps.length; i++) {
+      const r = retSteps[i] / 100;
+      const oe2 = optExit(gross, contrib, r, drag);
+      const { vuaa, ulPer } = tw(gross, contrib, r, drag, oe2.year);
+      if (vuaa > ulPer) { breakevenMsg = `At ${(drag*100).toFixed(1)}% drag, VUAA wins above ~${retSteps[i]}% return.`; break; }
+    }
+    document.getElementById('callout-surface').innerHTML =
+      `<strong>Zero line = break-even.</strong> Above zero = UL wins. Below = VUAA wins. ` +
+      (breakevenMsg || `At ${(drag*100).toFixed(1)}% drag, UL wins across all return levels shown.`) +
+      ` Find your drag level on the legend and trace it to your expected return.`;
+  }
+
+  if (activeTab === 'decomp') {
+    const advantage = [], entryAdv = [], dragCost = [];
+    RET_RANGE.forEach(rp => {
+      const r = rp / 100;
+      const oe2 = optExit(gross, contrib, r, drag);
+      const { vuaa, ulPer } = tw(gross, contrib, r, drag, oe2.year);
+      advantage.push(Math.round(ulPer - vuaa));
+
+      const oeND = optExit(gross, contrib, r, 0);
+      const { ulPer: ulND } = tw(gross, contrib, r, 0, oeND.year);
+      entryAdv.push(Math.round(ulND - vuaa));
+      dragCost.push(Math.round(ulPer - ulND));
+    });
+
+    renderLegend('leg-decomp', [
+      [PALETTE.ulPeriodic, [], 'Net UL advantage (optimal exit)'],
+      [PALETTE.vuaa, DASH.dash, 'Pre-tax entry benefit (zero drag)'],
+      ['#EF4444', DASH.dot, 'Fee drag cost (negative)'],
+    ]);
+    makeChart('chart-decomp', {
+      type: 'line',
+      data: {
+        labels: RET_RANGE.map(r => r + '%'),
+        datasets: [
+          lineDS('Net UL advantage', advantage, PALETTE.ulPeriodic, []),
+          lineDS('Entry benefit (no drag)', entryAdv, PALETTE.vuaa, DASH.dash),
+          lineDS('Fee drag cost', dragCost, '#EF4444', DASH.dot),
+        ],
+      },
+      options: {
+        ...baseChartOptions(),
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' }, title: { display: true, text: 'Annual return', color: '#6b7280', font: { size: 11 } } },
+          y: { ticks: { color: '#9ca3af', font: { size: 11 }, callback: v => (v >= 0 ? '+' : '') + fmt(v) }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        },
+      },
+    });
+    document.getElementById('note-decomp').textContent =
+      `Blue dashed = pure pre-tax entry benefit (how much extra you'd have if UL had 0% drag). ` +
+      `Red dotted = the fee drag cost (always negative, grows faster than the entry benefit at high returns). ` +
+      `Green = net. Where red overtakes blue, VUAA wins.`;
+  }
+
+  document.getElementById('main-note').textContent =
+    `All scenarios use optimal UL exit year (maximises terminal wealth at year 30). ` +
+    `Post-exit UL funds reinvested into VUAA at 0% tax. Marginal rate ${(mr*100).toFixed(0)}% on €${(gross/1000).toFixed(0)}k.`;
+}
+
+document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', render));
+render();
+</script>
+</body>
+</html>

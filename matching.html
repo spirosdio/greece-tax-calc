@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employer Matching Calculator · GR.tax</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" />
+  <link rel="stylesheet" href="src/css/main.css" />
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="nav-logo"><a href="index.html" style="color:inherit;text-decoration:none">GR<span>.</span>tax</a></span>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="calculator.html">Calculator</a>
+      <a href="matching.html" class="active">Employer matching</a>
+      <a href="sensitivity.html">Return sensitivity</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <section class="hero" style="padding:3rem 0 2rem">
+    <div class="hero-label" style="color:var(--green)">Employer pension matching</div>
+    <h1 style="font-size:clamp(1.6rem,4vw,2.6rem)">Raise vs pension match:<br>the SS arbitrage</h1>
+    <p style="font-size:14px;margin-top:.5rem">Pension contributions are SS-exempt on both sides. A raise gets taxed at 35.16% SS + income tax before it reaches you.</p>
+  </section>
+
+  <section class="section" style="padding-top:0">
+
+    <div class="card mb-3">
+      <div class="controls">
+        <div class="ctrl-group">
+          <label>Gross annual salary</label>
+          <div class="ctrl-row">
+            <input type="range" id="gross" min="30000" max="200000" step="1000" value="100000" />
+            <span class="ctrl-val" id="grossOut">€100k</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Employer matching % of gross</label>
+          <div class="ctrl-row">
+            <input type="range" id="match" min="0" max="20" step="0.5" value="5" />
+            <span class="ctrl-val" id="matchOut">5%</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>Annual return</label>
+          <div class="ctrl-row">
+            <input type="range" id="ret" min="4" max="18" step="0.5" value="10" />
+            <span class="ctrl-val" id="retOut">10%</span>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <label>UL fee drag</label>
+          <div class="ctrl-row">
+            <input type="range" id="drag" min="0.5" max="3" step="0.1" value="1.5" />
+            <span class="ctrl-val" id="dragOut">1.5%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-4 mb-3" id="metrics"></div>
+
+    <div class="tabs mt-2">
+      <button class="tab-btn active" data-tab="breakdown">Cost breakdown</button>
+      <button class="tab-btn" data-tab="roi">Efficiency (ROI)</button>
+      <button class="tab-btn" data-tab="growth">30yr growth</button>
+    </div>
+
+    <div id="tab-breakdown">
+      <div class="grid-2" style="gap:1.5rem;margin-top:1rem">
+        <div>
+          <h3 class="mb-2" style="color:var(--amber)">Scenario A: salary raise</h3>
+          <div class="table-scroll"><table class="data-table" id="table-raise"></table></div>
+        </div>
+        <div>
+          <h3 class="mb-2" style="color:var(--green)">Scenario B: pension matching (same cost)</h3>
+          <div class="table-scroll"><table class="data-table" id="table-match"></table></div>
+        </div>
+      </div>
+      <div class="callout mt-2" id="breakdown-callout"></div>
+    </div>
+
+    <div id="tab-roi" style="display:none">
+      <div class="chart-wrap" style="height:280px"><canvas id="chart-roi" role="img" aria-label="Efficiency comparison: euros received per euro employer spends"></canvas></div>
+      <p class="note" id="note-roi"></p>
+    </div>
+
+    <div id="tab-growth" style="display:none">
+      <div class="legend" id="leg-growth"></div>
+      <div class="chart-wrap" style="height:300px"><canvas id="chart-growth" role="img" aria-label="30 year portfolio growth comparison raise vs matching"></canvas></div>
+    </div>
+
+    <p class="note" id="main-note"></p>
+  </section>
+</div>
+
+<footer class="footer container">
+  <span>Greece investment tax calculator · 2026 tax rates</span>
+  <span>Not financial advice</span>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script type="module">
+import { employeeSS, employerSS, incomeTax, netSalary, marginalRate, totalEmployerCost, ulExitTaxRate, simulateAll } from './src/js/tax.js';
+import { fmt, fmtFull, fmtPct, PALETTE, DASH, baseChartOptions, lineDS, barDS, renderLegend, makeChart } from './src/js/charts.js';
+
+let activeTab = 'breakdown';
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    ['breakdown','roi','growth'].forEach(id =>
+      document.getElementById('tab-' + id).style.display = id === activeTab ? 'block' : 'none'
+    );
+    render();
+  });
+});
+
+function render() {
+  const gross   = +document.getElementById('gross').value;
+  const matchP  = +document.getElementById('match').value / 100;
+  const ret     = +document.getElementById('ret').value / 100;
+  const drag    = +document.getElementById('drag').value / 100;
+
+  document.getElementById('grossOut').textContent = '€' + (gross/1000).toFixed(0) + 'k';
+  document.getElementById('matchOut').textContent = (matchP*100).toFixed(1) + '%';
+  document.getElementById('retOut').textContent   = (ret*100) + '%';
+  document.getElementById('dragOut').textContent  = (drag*100).toFixed(1) + '%';
+
+  const mr         = marginalRate(gross);
+  const matchAmt   = gross * matchP;
+  const netBase    = netSalary(gross);
+  const costBase   = totalEmployerCost(gross);
+  const newGross   = gross + matchAmt;
+  const netRaise   = netSalary(newGross);
+  const costRaise  = totalEmployerCost(newGross);
+  const netGain    = netRaise - netBase;
+  const costExtra  = costRaise - costBase;
+  const efficiency = costExtra > 0 ? netGain / costExtra : 0;
+
+  document.getElementById('metrics').innerHTML = [
+    { lbl: 'Base employer cost',  val: fmtFull(costBase),  sub: `${fmtFull(gross)} + ${fmtFull(employerSS(gross))} SS` },
+    { lbl: 'Match amount',        val: fmtFull(matchAmt),  sub: 'Zero SS on both sides' },
+    { lbl: 'Cash efficiency (raise)', val: fmtPct(efficiency), sub: 'Take-home per €1 employer spends', cls: efficiency > 0.6 ? 'positive' : '' },
+    { lbl: 'Matching efficiency', val: '€1.00', sub: '→ €1 into pension, no friction', cls: 'positive' },
+  ].map(m => `<div class="metric-card ${m?.cls||''}"><div class="lbl">${m.lbl}</div><div class="val">${m.val}</div><div class="sub">${m.sub}</div></div>`).join('');
+
+  if (activeTab === 'breakdown') {
+    const mkRow = (label, base, after, cls='') => {
+      const diff = after - base;
+      return `<tr><td>${label}</td><td class="mono">${fmtFull(base)}</td><td class="mono">${fmtFull(after)}</td><td class="mono ${diff>=0?'pos':'neg'}">${diff>=0?'+':''}${fmtFull(diff)}</td></tr>`;
+    };
+    const header = `<thead><tr><th>Item</th><th>Base</th><th>After raise</th><th>Δ</th></tr></thead><tbody>`;
+    document.getElementById('table-raise').innerHTML = header +
+      mkRow('Gross salary', gross, newGross) +
+      mkRow('Employee SS (13.37%)', employeeSS(gross), employeeSS(newGross)) +
+      mkRow('Income tax', incomeTax(gross), incomeTax(newGross)) +
+      `<tr class="exit-row"><td class="hi">Net take-home</td><td class="mono hi">${fmtFull(netBase)}</td><td class="mono hi">${fmtFull(netRaise)}</td><td class="mono pos hi">+${fmtFull(netGain)}</td></tr>` +
+      mkRow('Employer SS cost', employerSS(gross), employerSS(newGross)) +
+      `<tr><td class="hi">Total employer cost</td><td class="mono hi">${fmtFull(costBase)}</td><td class="mono hi">${fmtFull(costRaise)}</td><td class="mono neg hi">+${fmtFull(costExtra)}</td></tr>` +
+      `<tr><td colspan="3">Take-home per €1 employer spends extra</td><td class="mono hi">${efficiency.toFixed(3)}</td></tr>` +
+      '</tbody>';
+
+    const matchHeader = `<thead><tr><th>Item</th><th>Base</th><th>With matching</th><th>Notes</th></tr></thead><tbody>`;
+    document.getElementById('table-match').innerHTML = matchHeader +
+      `<tr><td>Gross salary</td><td class="mono">${fmtFull(gross)}</td><td class="mono">${fmtFull(gross)}</td><td>unchanged</td></tr>` +
+      `<tr><td>Employee SS</td><td class="mono">${fmtFull(employeeSS(gross))}</td><td class="mono">${fmtFull(employeeSS(gross))}</td><td>unchanged</td></tr>` +
+      `<tr><td>Income tax</td><td class="mono">${fmtFull(incomeTax(gross))}</td><td class="mono">${fmtFull(incomeTax(gross))}</td><td>unchanged</td></tr>` +
+      `<tr><td>Net take-home cash</td><td class="mono">${fmtFull(netBase)}</td><td class="mono">${fmtFull(netBase)}</td><td>same</td></tr>` +
+      `<tr class="exit-row"><td class="hi pos">Pension contribution</td><td>–</td><td class="mono pos hi">${fmtFull(matchAmt)}</td><td>pre-tax, no SS</td></tr>` +
+      `<tr><td>Employer SS on pension</td><td>–</td><td class="mono pos">€0</td><td>SS-exempt</td></tr>` +
+      `<tr><td class="hi">Total employer cost</td><td class="mono hi">${fmtFull(costBase)}</td><td class="mono hi">${fmtFull(costBase + matchAmt)}</td><td class="neg">+${fmtFull(matchAmt)}</td></tr>` +
+      `<tr><td colspan="3">Pension received per €1 employer spends extra</td><td class="mono hi pos">€1.000</td></tr>` +
+      '</tbody>';
+
+    document.getElementById('breakdown-callout').innerHTML =
+      `<strong>Efficiency gap:</strong> a raise of ${fmtFull(matchAmt)} costs the employer ${fmtFull(costExtra)} (SS on top) and you keep only ${fmtFull(netGain)} (${fmtPct(efficiency)} efficiency). ` +
+      `The same ${fmtFull(matchAmt)} as pension matching costs exactly ${fmtFull(matchAmt)} (no employer SS) and you get 100% into your pension. ` +
+      `<strong>Matching is ${(1/efficiency).toFixed(1)}× more efficient at transferring value.</strong>`;
+  }
+
+  if (activeTab === 'roi') {
+    const steps = Array.from({ length: 21 }, (_, i) => i);
+    const raiseEff = steps.map(mp => {
+      if (mp === 0) return 0;
+      const mAmt = gross * mp / 100;
+      const nG = gross + mAmt;
+      const gain = netSalary(nG) - netBase;
+      const cost = totalEmployerCost(nG) - costBase;
+      return cost > 0 ? Math.round(gain / cost * 100) : 0;
+    });
+    makeChart('chart-roi', {
+      type: 'bar',
+      data: {
+        labels: steps.map(s => s + '%'),
+        datasets: [
+          { label: 'Cash raise: take-home per €100 employer spends', data: raiseEff, backgroundColor: PALETTE.ulLump + 'cc', borderRadius: 3 },
+          { label: 'Pension match: pension per €100 employer spends', data: steps.map(() => 100), backgroundColor: PALETTE.ulPeriodic + 'cc', borderRadius: 3 },
+        ],
+      },
+      options: {
+        ...baseChartOptions(),
+        plugins: {
+          legend: { display: true, position: 'top', labels: { color: '#9ca3af', font: { size: 11 }, boxWidth: 12 } },
+          tooltip: { callbacks: { label: c => '  ' + c.dataset.label + ': €' + c.raw } },
+        },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 11 } }, grid: { display: false }, title: { display: true, text: 'Match / raise as % of gross', color: '#6b7280', font: { size: 11 } } },
+          y: { ticks: { color: '#9ca3af', font: { size: 11 }, callback: v => '€' + v }, grid: { color: 'rgba(255,255,255,0.05)' }, max: 110 },
+        },
+      },
+    });
+    document.getElementById('note-roi').textContent =
+      `Green = always €100 into pension per €100 employer spends (pension is SS-exempt). ` +
+      `Amber = actual take-home from a raise at that matching level. At ${(mr*100).toFixed(0)}% marginal rate + SS, you keep ~${Math.round(efficiency*100)}€ per €100 extra employer spends.`;
+  }
+
+  if (activeTab === 'growth') {
+    const totalYears = 30;
+    const ulReturn = ret - drag;
+
+    const raiseVUAA = [], matchUL = [], matchULPer = [];
+    let rv = 0, mu = 0, mup = 0;
+    for (let y = 1; y <= totalYears; y++) {
+      rv  = (rv  + netGain)   * (1 + ret);
+      mu  = (mu  + matchAmt)  * (1 + ulReturn);
+      mup = (mup + matchAmt)  * (1 + ulReturn);
+      raiseVUAA.push(Math.round(rv));
+      matchUL.push(Math.round(mu * (1 - ulExitTaxRate(y, true, false))));
+      matchULPer.push(Math.round(mup * (1 - ulExitTaxRate(y, false, false))));
+    }
+
+    const labels = Array.from({ length: totalYears }, (_, i) => 'Yr ' + (i + 1));
+    renderLegend('leg-growth', [
+      [PALETTE.vuaa, [], `Raise → VUAA (${fmtFull(netGain)}/yr, 0% tax)`],
+      [PALETTE.ulLump, DASH.dash, 'Match → UL lump exit'],
+      [PALETTE.ulPeriodic, DASH.dot, 'Match → UL periodic exit'],
+    ]);
+    makeChart('chart-growth', {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          lineDS(`Raise → VUAA`, raiseVUAA, PALETTE.vuaa, []),
+          lineDS('Match UL lump', matchUL, PALETTE.ulLump, DASH.dash),
+          lineDS('Match UL periodic', matchULPer, PALETTE.ulPeriodic, DASH.dot),
+        ],
+      },
+      options: baseChartOptions(),
+    });
+  }
+
+  document.getElementById('main-note').textContent =
+    `Employer total cost base: ${fmtFull(costBase)} (${fmtFull(gross)} gross + ${fmtFull(employerSS(gross))} employer SS). ` +
+    `Adding ${fmtFull(matchAmt)} as a raise costs ${fmtFull(costExtra)} extra (employer SS on the raise). ` +
+    `Adding ${fmtFull(matchAmt)} as pension matching costs exactly ${fmtFull(matchAmt)} — pension contributions are EFKA-exempt.`;
+}
+
+document.querySelectorAll('input[type=range]').forEach(el => el.addEventListener('input', render));
+render();
+</script>
+</body>
+</html>
