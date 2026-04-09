@@ -1,5 +1,5 @@
 # greece-tax-calc
-hello
+
 Greece investment tax calculator — comparing VUAA direct investing vs unit-linked insurance vs employer pension matching.
 
 **Live demo:** `https://<your-username>.github.io/greece-tax-calc/`
